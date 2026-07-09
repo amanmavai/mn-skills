@@ -32,21 +32,33 @@ run() { if [ "$DRY_RUN" -eq 1 ]; then say "  [dry-run] $*"; else eval "$@"; fi; 
 
 # --- 1. Collect skills from mine/ and vendor/ -------------------------------
 # Find every SKILL.md, map its parent dir -> skill name (basename).
-declare -a SRC_DIRS=()
-declare -a NAMES=()
-declare -A SEEN=()          # name -> source path (for collision detection)
+# (Kept bash-3.2 compatible — macOS ships 3.2, which has no associative arrays.)
+SRC_DIRS=()
+NAMES=()
 collisions=0
+
+# Return the source dir already claimed for a name, or nothing.
+claimed_by() {
+  local want="$1" i
+  [ "${#NAMES[@]}" -eq 0 ] && return 1
+  for i in "${!NAMES[@]}"; do
+    if [ "${NAMES[$i]}" = "$want" ]; then
+      printf '%s' "${SRC_DIRS[$i]}"
+      return 0
+    fi
+  done
+  return 1
+}
 
 while IFS= read -r -d '' skillmd; do
   dir="$(dirname "$skillmd")"
   name="$(basename "$dir")"
-  if [ -n "${SEEN[$name]:-}" ]; then
+  if prev="$(claimed_by "$name")"; then
     say "COLLISION: '$name'"
-    say "    already: ${SEEN[$name]}"
+    say "    already: $prev"
     say "    also   : $dir"
     collisions=1
   else
-    SEEN[$name]="$dir"
     SRC_DIRS+=("$dir")
     NAMES+=("$name")
   fi
@@ -70,12 +82,14 @@ elif [ -d "$DEST" ]; then
 fi
 run "mkdir -p '$DEST'"
 
-for i in "${!NAMES[@]}"; do
-  name="${NAMES[$i]}"
-  src="${SRC_DIRS[$i]}"
-  say "  + $name"
-  run "cp -R '$src' '$DEST/$name'"
-done
+if [ "$count" -gt 0 ]; then
+  for i in "${!NAMES[@]}"; do
+    name="${NAMES[$i]}"
+    src="${SRC_DIRS[$i]}"
+    say "  + $name"
+    run "cp -R '$src' '$DEST/$name'"
+  done
+fi
 
 # --- 3. Ensure ~/.claude/skills -> ~/.agents/skills -------------------------
 if [ -L "$CLAUDE_LINK" ]; then
