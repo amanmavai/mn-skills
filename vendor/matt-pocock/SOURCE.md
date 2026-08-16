@@ -1,8 +1,9 @@
 # Source: mattpocock/skills
 
-- Repo:   https://github.com/mattpocock/skills
-- Commit: 8b78b531ab965735c5dc74f6f7a219e1e37326df
-- Vendored: 2026-08-15
+- Repo:   https://github.com/mattpocock/skills.git
+- Skills dir: skills
+- Commit: 068b6e0c62393147daf03530149cdce209c93da8
+- Vendored: 2026-08-16
 
-Refresh with `./update.sh` in this folder. Prune `deprecated/` and
-`in-progress/` here if you don't want those.
+Refresh with `./vendor.sh` from the repo root. Prune any category folders
+here you don't want — they come back on the next refresh.

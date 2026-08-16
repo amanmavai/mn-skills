@@ -17,13 +17,25 @@ Run it whenever you **add, remove, rename, or edit** a skill.
 bash sync.sh
 ```
 
-### `vendor/matt-pocock/update.sh` — refresh vendored skills
+### `vendor.sh` — vendor skills from a git repo
 
-Re-pulls the latest skills from mattpocock/skills into `vendor/matt-pocock/`.
+Clones a repo, copies its skills folder into `vendor/<name>/`, and pins the
+commit in `vendor/<name>/SOURCE.md`.
 
 ```bash
-bash vendor/matt-pocock/update.sh
+# add (or re-pull) one source
+bash vendor.sh https://github.com/mattpocock/skills.git matt-pocock
+
+# skills live somewhere other than skills/
+bash vendor.sh https://github.com/some/repo --dir .claude/skills
+
+# no args: refresh every source already under vendor/, reading each SOURCE.md
+bash vendor.sh
 ```
+
+`[name]` defaults to the repo owner. `--dir` defaults to `skills` (use `.` for
+the repo root). The whole `vendor/<name>/` tree is replaced on each run, so the
+git diff afterward shows exactly what changed upstream.
 
 After updating, run `sync.sh` again to publish the changes:
 
