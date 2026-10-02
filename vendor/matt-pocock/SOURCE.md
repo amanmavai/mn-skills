@@ -2,8 +2,8 @@
 
 - Repo:   https://github.com/mattpocock/skills.git
 - Skills dir: skills
-- Commit: c55ee46073ed923f86ce59a5eb3b6d895095d1b7
-- Vendored: 2026-09-18
+- Commit: d81f3a183412e71a5b1e84ca21bc1a35eea03a60
+- Vendored: 2026-10-02
 
 Refresh with `./vendor.sh` from the repo root. Prune any category folders
 here you don't want — they come back on the next refresh.
