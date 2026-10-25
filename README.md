@@ -23,23 +23,16 @@ named `mn`, which is what makes it installable by name.
 
 ## Install
 
-Two ways, and they behave differently on purpose.
-
-**From this clone** — the plugin loads *in place*, so edits to any `SKILL.md`
-take effect at the next session start with nothing to publish:
+Point a marketplace at the clone, then install from it. The plugin loads *in
+place*, so edits to any `SKILL.md` take effect at the next session start with
+nothing to publish:
 
 ```bash
 claude plugin marketplace add ~/mn/repos/mn-skills && claude plugin install mn-skills@mn
 ```
 
-**From GitHub** — the plugin is copied and pinned to `version` in
-`plugin.json`, so changes reach the machine only when that string changes and
-you run an update. Use this on machines where the repo isn't checked out, and
-in cloud sessions, which never load local personal skills:
-
-```bash
-claude plugin install mn-skills --marketplace amanmavai/mn-skills
-```
+On another machine, clone the repo first and run the same two commands against
+that path.
 
 ## Everyday commands
 
@@ -50,9 +43,10 @@ claude plugin disable mn-skills     # take the whole set out of play
 claude plugin list                  # see what loaded, and any load errors
 ```
 
-Installed from this clone, adding, editing, renaming or deleting a skill needs
-no command at all — the next session reads the current files. Within a running
-session, `/reload-plugins` picks changes up without restarting.
+Adding, editing, renaming or deleting a skill needs no command at all — the
+next session reads the current files, and `/reload-plugins` picks changes up
+without restarting. The exception is `plugin.json` itself: after changing which
+*directories* it scans, run `claude plugin marketplace update mn`.
 
 ## `vendor.sh` — vendor skills from a git repo
 
