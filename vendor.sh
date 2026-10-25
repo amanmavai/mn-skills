@@ -130,6 +130,43 @@ source_field() {
   sed -n "s/^- $2:[[:space:]]*//p" "$1" | head -n1
 }
 
+# The plugin manifest lists every directory that holds skills, and the field
+# takes no glob, so a freshly vendored source loads only once it is listed.
+# Rewrite the list from what is on disk instead of trusting us to remember.
+refresh_manifest_skills() {
+  local manifest="$ROOT/.claude-plugin/plugin.json"
+  [ -f "$manifest" ] || { warn "No .claude-plugin/plugin.json — skipping skills list."; return; }
+
+  # Roots to scan. A missing one is worth saying out loud rather than hiding
+  # behind a suppressed find error.
+  local roots=() r
+  for r in "$ROOT/mine" "$VENDOR_DIR"; do
+    if [ -d "$r" ]; then roots+=("$r"); else warn "No ${r#"$ROOT"/}/ directory."; fi
+  done
+  [ "${#roots[@]}" -gt 0 ] || { warn "Nothing to scan — leaving plugin.json alone."; return; }
+
+  # Each listed directory is scanned one level deep, so what the manifest wants
+  # is every directory that holds a <skill>/SKILL.md — the grandparent of each
+  # SKILL.md, which the sed strips off. Deriving them this way keeps a source
+  # working whether its skills sit at its top level or inside category folders.
+  local dirs=() d
+  while IFS= read -r d; do
+    dirs+=("./${d#"$ROOT"/}/")
+  done < <(find "${roots[@]}" -type f -name SKILL.md \
+             | sed -E 's#/[^/]+/SKILL\.md$##' | sort -u)
+  [ "${#dirs[@]}" -gt 0 ] || { warn "No skills found — leaving plugin.json alone."; return; }
+
+  # One raw string per line in, one JSON array out; [:-1] drops printf's
+  # trailing empty line. Written to a temp file so a jq failure can't truncate
+  # the manifest.
+  local json tmp
+  json="$(printf '%s\n' "${dirs[@]}" | jq -Rs 'split("\n")[:-1]')"
+  tmp="$(mktemp)"
+  jq --argjson skills "$json" '.skills = $skills' "$manifest" > "$tmp"
+  mv "$tmp" "$manifest"
+  ok "plugin.json skills: ${dirs[*]}"
+}
+
 TOTAL=0
 
 if [ -n "$REPO_URL" ]; then
@@ -156,8 +193,11 @@ else
 fi
 
 # --- Done --------------------------------------------------------------------
+refresh_manifest_skills
+
 echo ""
 echo "============================================="
 echo "  Vendored $TOTAL skill(s) from $sources source(s)"
 echo "============================================="
-info "Next: run $ROOT/sync.sh to update the live dir."
+info "The plugin loads from this repo, so there is nothing to publish."
+info "Check it with: claude plugin validate $ROOT"

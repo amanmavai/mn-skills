@@ -1,0 +1,15 @@
+{
+  "name": "mn",
+  "description": "Aman's own plugin marketplace. Holds mn-skills, the agent skills in this repo.",
+  "owner": {
+    "name": "Aman Mavai",
+    "url": "https://github.com/amanmavai"
+  },
+  "plugins": [
+    {
+      "name": "mn-skills",
+      "source": ".",
+      "description": "Agent skills grouped by origin: mine/ and vendor/<source>/. Skills load as mn-skills:<name>."
+    }
+  ]
+}
