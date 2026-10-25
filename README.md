@@ -10,7 +10,10 @@ A **skill** is any directory containing a `SKILL.md`.
 
 ### `sync.sh` — publish skills to the live dir
 
-Rebuilds `~/.agents/skills` (and the `~/.claude/skills` symlink) from this repo.
+Copies every skill into `~/.agents/skills` (and creates the `~/.claude/skills`
+symlink). It replaces only the skills it copied last time, listed in
+`~/.agents/skills/.mn-skills-manifest`, and leaves everything else in that dir
+alone. It checks for duplicate names before changing anything.
 Run it whenever you **add, remove, rename, or edit** a skill.
 
 ```bash

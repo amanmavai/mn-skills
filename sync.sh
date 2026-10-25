@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# sync.sh — materialize all skills from this repo into the live agent skills dir.
+# sync.sh — copy all skills from this repo into the live agent skills dir.
 #
 # Source of truth : this repo, grouped as mine/<skill>/ and vendor/<source>/<skill>/
 # Live dir        : ~/.agents/skills (flat, one dir per skill — this is what tools scan)
@@ -8,9 +8,10 @@
 #
 # A "skill" is any directory containing a SKILL.md file. Its directory name
 # becomes its name in the flat live dir, so names must be unique across sources.
+# Only skills this script copied last time are replaced; other entries are kept.
 #
 # Usage:
-#   ./sync.sh            rebuild the live dir from this repo
+#   ./sync.sh            copy the repo's skills into the live dir
 
 set -euo pipefail
 
@@ -20,6 +21,7 @@ set -euo pipefail
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"   # repo root (/Users/amanmavai/mn/repos/mn-skills)
 DEST="${HOME}/.agents/skills"                              # flat live dir tools scan
 CLAUDE_LINK="${HOME}/.claude/skills"                       # convenience symlink -> DEST
+MANIFEST="$DEST/.mn-skills-manifest"                       # names this script copied last run
 
 # --- Helpers -----------------------------------------------------------------
 info()  { printf '\n\033[1;34m[INFO]\033[0m  %s\n' "$*"; }
@@ -27,37 +29,67 @@ ok()    { printf '\033[1;32m[OK]\033[0m    %s\n' "$*"; }
 warn()  { printf '\033[1;33m[WARN]\033[0m  %s\n' "$*"; }
 fail()  { printf '\033[1;31m[FAIL]\033[0m  %s\n' "$*" >&2; exit 1; }
 
+# in_list <name> <newline-separated list> — exact whole-line match.
+in_list() { printf '%s\n' "$2" | grep -Fxq -- "$1"; }
+
 # --- Argument parsing --------------------------------------------------------
 case "${1:-}" in
   "" ) ;;
-  -h|--help) sed -n '3,13p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+  -h|--help) sed -n '3,14p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
   * ) fail "Unknown arg: $1 (usage: $0)" ;;
 esac
 
-# --- 1. Rebuild the live dir from mine/ and vendor/ --------------------------
+# --- 1. Collect skills and check names, before touching the live dir ---------
 # Convention: a skill is any dir with a SKILL.md, and its basename is unique
-# across sources. That lets the live dir double as the collision check — a name
-# that's already there means two skills claim it, so we stop.
-info "Rebuilding $DEST from mine/ and vendor/ ..."
-# Start clean. rm -rf handles every prior state — missing (-f is quiet), a real
-# dir, or a stray symlink (the link is removed, never followed into its target).
-rm -rf "$DEST"
-mkdir -p "$DEST"
-
-count=0
+# across sources. Every check happens here, so a failure leaves DEST as it was.
+info "Collecting skills from mine/ and vendor/ ..."
+srcs=()     # skill dirs to copy
+names=""    # their basenames, one per line
 # Read one NUL-terminated path per SKILL.md (-d '' pairs with find's -print0).
 while IFS= read -r -d '' skillmd; do
   src="$(dirname "$skillmd")"    # the skill's dir  (…/tdd/SKILL.md -> …/tdd)
   name="$(basename "$src")"      # its live name    (…/tdd          -> tdd)
-  # DEST started empty, so a name already there means a second skill claims it.
-  [ ! -e "$DEST/$name" ] || fail "COLLISION: '$name' — two skills share a directory name. Rename one and re-run."
-  echo "  + $name"
-  cp -R "$src" "$DEST/$name"     # copy the whole skill dir, not just SKILL.md
-  count=$((count + 1))
-# Process substitution (not a pipe) keeps the loop in this shell so count survives.
+  ! in_list "$name" "$names" || fail "COLLISION: '$name' — two skills share a directory name. Rename one and re-run."
+  names="${names}${name}"$'\n'
+  srcs+=("$src")
+# Process substitution (not a pipe) keeps the loop in this shell so the vars survive.
 # find lists every SKILL.md under both roots, NUL-separated (-print0) for safe paths.
 done < <(find "$REPO_DIR/mine" "$REPO_DIR/vendor" -type f -name SKILL.md -print0 2>/dev/null)
-ok "Copied $count skill(s) into $DEST"
+[ "${#srcs[@]}" -gt 0 ] || fail "No skills found under mine/ or vendor/."
+
+# The manifest says which entries in DEST are ours. With no manifest yet (first
+# run of this version), assume the current skill names are ours — the old
+# script owned the whole dir, so anything matching them came from it.
+if [ -f "$MANIFEST" ]; then owned="$(cat "$MANIFEST")"; else owned="$names"; fi
+
+# A DEST symlink would make us write into whatever it points at.
+[ ! -L "$DEST" ] || fail "$DEST is a symlink — replace it with a real dir and re-run."
+# Never overwrite an entry someone else put in DEST (e.g. the app's synced/).
+while IFS= read -r name; do
+  [ -n "$name" ] || continue
+  if { [ -e "$DEST/$name" ] || [ -L "$DEST/$name" ]; } && ! in_list "$name" "$owned"; then
+    fail "'$name' already exists in $DEST and sync.sh didn't put it there. Move it aside or rename the skill, then re-run."
+  fi
+done <<< "$names"
+ok "Found ${#srcs[@]} skill(s), no name conflicts"
+
+# --- 2. Replace our previous copies in the live dir --------------------------
+info "Copying skills into $DEST ..."
+mkdir -p "$DEST"
+# Remove only what we copied last time, so skills deleted from the repo go away
+# too. Skip anything that isn't a plain name — rm -rf must stay inside DEST.
+while IFS= read -r name; do
+  case "$name" in ''|.|..|*/*) continue ;; esac
+  rm -rf "${DEST:?}/$name"
+done <<< "$owned"
+
+for src in "${srcs[@]}"; do
+  name="$(basename "$src")"
+  echo "  + $name"
+  cp -R "$src" "$DEST/$name"     # copy the whole skill dir, not just SKILL.md
+done
+printf '%s' "$names" > "$MANIFEST"
+ok "Copied ${#srcs[@]} skill(s) into $DEST"
 
 # --- 3. Ensure ~/.claude/skills -> ~/.agents/skills --------------------------
 # -L is tested before -e since every symlink also passes -e.
@@ -79,5 +111,5 @@ fi
 # --- Done --------------------------------------------------------------------
 echo ""
 echo "============================================="
-echo "  Synced $count skill(s) to $DEST"
+echo "  Synced ${#srcs[@]} skill(s) to $DEST"
 echo "============================================="
