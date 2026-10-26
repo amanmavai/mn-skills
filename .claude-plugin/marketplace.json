@@ -1,6 +1,6 @@
 {
   "name": "mn",
-  "description": "Aman's own plugin marketplace. Holds mn-skills, the agent skills in this repo.",
+  "description": "Aman's own plugin marketplace. Holds the agent skills in this repo.",
   "owner": {
     "name": "Aman Mavai",
     "url": "https://github.com/amanmavai"
@@ -9,7 +9,21 @@
     {
       "name": "mn-skills",
       "source": ".",
-      "description": "Agent skills grouped by origin: mine/ and vendor/<source>/. Skills load as mn-skills:<name>."
+      "version": "1.1.0",
+      "description": "Everyday skills: writing, TypeScript, simplification, branch summaries. Loads as mn-skills:<name>.",
+      "skills": [
+        "./mine/",
+        "./vendor/staltz/"
+      ]
+    },
+    {
+      "name": "chakra-ui",
+      "source": ".",
+      "version": "1.0.0",
+      "description": "Chakra UI v3 skills: building, refactoring, migrating. Vendored from chakra-ui/chakra-ui. Enable per project.",
+      "skills": [
+        "./vendor/chakra-ui/"
+      ]
     }
   ]
 }

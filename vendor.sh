@@ -26,6 +26,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"   # repo root (/Users/amanmavai/mn/repos/mn-skills)
 VENDOR_DIR="$ROOT/vendor"                              # where vendored sources live
 DEFAULT_SUBDIR="skills"                                # upstream folder holding the skills
+DEFAULT_PLUGIN="mn-skills"                             # entry a newly vendored source joins
 
 # --- Helpers -----------------------------------------------------------------
 info()  { printf '\n\033[1;34m[INFO]\033[0m  %s\n' "$*"; }
@@ -130,12 +131,14 @@ source_field() {
   sed -n "s/^- $2:[[:space:]]*//p" "$1" | head -n1
 }
 
-# The plugin manifest lists every directory that holds skills, and the field
+# Each marketplace entry lists the directories its plugin scans, and the field
 # takes no glob, so a freshly vendored source loads only once it is listed.
-# Rewrite the list from what is on disk instead of trusting us to remember.
-refresh_manifest_skills() {
-  local manifest="$ROOT/.claude-plugin/plugin.json"
-  [ -f "$manifest" ] || { warn "No .claude-plugin/plugin.json — skipping skills list."; return; }
+# Drop directories that are gone, and hand any unlisted one to $DEFAULT_PLUGIN
+# rather than leave it loading nowhere. Move it afterwards if it belongs in a
+# plugin of its own.
+refresh_marketplace_skills() {
+  local manifest="$ROOT/.claude-plugin/marketplace.json"
+  [ -f "$manifest" ] || { warn "No .claude-plugin/marketplace.json — skipping skills lists."; return; }
 
   # Roots to scan. A missing one is worth saying out loud rather than hiding
   # behind a suppressed find error.
@@ -143,10 +146,10 @@ refresh_manifest_skills() {
   for r in "$ROOT/mine" "$VENDOR_DIR"; do
     if [ -d "$r" ]; then roots+=("$r"); else warn "No ${r#"$ROOT"/}/ directory."; fi
   done
-  [ "${#roots[@]}" -gt 0 ] || { warn "Nothing to scan — leaving plugin.json alone."; return; }
+  [ "${#roots[@]}" -gt 0 ] || { warn "Nothing to scan — leaving marketplace.json alone."; return; }
 
-  # Each listed directory is scanned one level deep, so what the manifest wants
-  # is every directory that holds a <skill>/SKILL.md — the grandparent of each
+  # Each listed directory is scanned one level deep, so what an entry wants is
+  # every directory that holds a <skill>/SKILL.md — the grandparent of each
   # SKILL.md, which the sed strips off. Deriving them this way keeps a source
   # working whether its skills sit at its top level or inside category folders.
   local dirs=() d
@@ -154,17 +157,36 @@ refresh_manifest_skills() {
     dirs+=("./${d#"$ROOT"/}/")
   done < <(find "${roots[@]}" -type f -name SKILL.md \
              | sed -E 's#/[^/]+/SKILL\.md$##' | sort -u)
-  [ "${#dirs[@]}" -gt 0 ] || { warn "No skills found — leaving plugin.json alone."; return; }
+  [ "${#dirs[@]}" -gt 0 ] || { warn "No skills found — leaving marketplace.json alone."; return; }
+
+  jq -e --arg d "$DEFAULT_PLUGIN" 'any(.plugins[]; .name == $d)' "$manifest" >/dev/null \
+    || warn "No plugin named '$DEFAULT_PLUGIN' — an unlisted skill dir would load nowhere."
 
   # One raw string per line in, one JSON array out; [:-1] drops printf's
   # trailing empty line. Written to a temp file so a jq failure can't truncate
   # the manifest.
-  local json tmp
-  json="$(printf '%s\n' "${dirs[@]}" | jq -Rs 'split("\n")[:-1]')"
+  local all tmp
+  all="$(printf '%s\n' "${dirs[@]}" | jq -Rs 'split("\n")[:-1]')"
   tmp="$(mktemp)"
-  jq --argjson skills "$json" '.skills = $skills' "$manifest" > "$tmp"
+  jq --argjson all "$all" --arg default "$DEFAULT_PLUGIN" '
+      # forget directories that no longer exist
+      .plugins |= map(.skills = ((.skills // []) | map(select(IN($all[])))))
+      # whatever is on disk that no entry claims joins the default plugin
+    | ([.plugins[].skills // [] | .[]] | unique) as $claimed
+    | ($all - $claimed) as $unclaimed
+    | .plugins |= map(
+        if .name == $default
+        then .skills = ((.skills // []) + $unclaimed | unique)
+        else . end
+      )
+  ' "$manifest" > "$tmp"
   mv "$tmp" "$manifest"
-  ok "plugin.json skills: ${dirs[*]}"
+
+  # Print where everything landed, so a source joining the default is visible.
+  local name list
+  while IFS=$'\t' read -r name list; do
+    ok "$name: $list"
+  done < <(jq -r '.plugins[] | "\(.name)\t\(.skills // [] | join(" "))"' "$manifest")
 }
 
 TOTAL=0
@@ -193,7 +215,7 @@ else
 fi
 
 # --- Done --------------------------------------------------------------------
-refresh_manifest_skills
+refresh_marketplace_skills
 
 echo ""
 echo "============================================="
